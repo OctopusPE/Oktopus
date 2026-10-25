@@ -25,21 +25,35 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 
-WORD_RE = re.compile(r"[A-Za-z0-9$%'’-]+")
+WORD_RE = re.compile(r"[\w$%'’-]+")
 SENT_RE = re.compile(r"[^.!?]+[.!?]*")
-CONCRETE_RE = re.compile(r"\$\s?\d|\b\d[\d,.]*\b|(?<!^)\b[A-Z][a-z]{2,}\b", re.MULTILINE)
+CONCRETE_RE = re.compile(r"(?:US\$|\$|S/\.?)\s?\d|\b\d[\d,.]*\b|(?<!^)\b[A-ZÁÉÍÓÚÑ][a-záéíóúñü]{2,}\b",
+                         re.MULTILINE)
 STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for",
     "with", "that", "this", "it", "is", "are", "was", "were", "be", "been",
     "you", "your", "i", "my", "me", "we", "our", "they", "them", "he", "she",
     "so", "just", "not", "no", "do", "did", "does", "have", "has", "had",
     "will", "can", "at", "as", "by", "from", "out", "up", "off", "one", "all",
+    # es-PE, written without accents because the loop check runs on fold().
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "uno", "y", "o", "pero",
+    "si", "de", "del", "al", "en", "por", "para", "con", "que", "este", "esta",
+    "esto", "es", "son", "era", "fue", "ser", "tu", "te", "ti", "yo", "mi", "me",
+    "nos", "lo", "le", "les", "se", "ni", "ya", "muy", "mas", "como", "pues",
+    "pe", "hay", "todo", "toda", "eso", "esa", "ese",
 }
 
 HOOK_WINDOW = 3.0        # seconds. Past this, the thumb has already decided.
 MAX_BEAT = 4.0           # seconds on one idea with no change on screen.
 ABSTRACT_RUN = 3         # beats in a row with nothing checkable in them.
+
+
+def fold(text):
+    """Lowercase, accents off, so "minutos" and "Minutos" loop together."""
+    return "".join(c for c in unicodedata.normalize("NFD", text.lower())
+                   if unicodedata.category(c) != "Mn")
 
 
 def words(text):
@@ -146,8 +160,8 @@ def analyse(raw, wpm=165, target=None):
             run, start = 0, None
 
     # Does the last line hand you back to the first one?
-    first = {w.lower() for w in words(rows[0]["text"]) if w.lower() not in STOPWORDS}
-    last = {w.lower() for w in words(rows[-1]["text"]) if w.lower() not in STOPWORDS}
+    first = {fold(w) for w in words(rows[0]["text"]) if fold(w) not in STOPWORDS}
+    last = {fold(w) for w in words(rows[-1]["text"]) if fold(w) not in STOPWORDS}
     loop = sorted(pretty(w) for w in first & last)
     if loop:
         notes.append(f"Loops: the last beat repeats \"{', '.join(loop[:3])}\" from the hook. "

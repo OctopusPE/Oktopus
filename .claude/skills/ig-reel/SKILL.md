@@ -22,9 +22,15 @@ python3 hookscore.py --hook "one line"      # score a single one
 python3 beats.py script.txt --target 30     # timed beat sheet before you shoot
 ```
 
+Both tools score English and Peruvian Spanish (soles, "lucas", S/, spoken
+numbers, pro-drop first person, local filler openers like "este" and "ya").
+Write the hook in the language the user will say it in; do not translate it to
+English to score it. Paths under `.claude/instagram/` are relative to the
+project root, so the voice, log, plan and swipe files live in the repo.
+
 ## Before you write
 
-1. Read `~/.claude/instagram/voice.md` if it exists. That is the user's voice
+1. Read `.claude/instagram/voice.md` if it exists. That is the user's voice
    profile: how they talk on camera, what they never say, who they are talking
    to. If it does not exist, ask for **three of their own reels**, transcribe or
    read them, infer the voice, and write the file. A script in the wrong voice
@@ -36,7 +42,7 @@ python3 beats.py script.txt --target 30     # timed beat sheet before you shoot
 3. If the idea is thin, do not pad it. Ask one batched question: what happened,
    to whom, and what did it cost or return. A Reel needs one specific true
    thing. Get it before writing.
-4. If `~/.claude/instagram/swipe.md` exists, read it. `/ig-viral` writes that
+4. If `.claude/instagram/swipe.md` exists, read it. `/ig-viral` writes that
    file, and it is the user's own evidence about which formulas are working in
    their niche right now. It beats the defaults in this file.
 
@@ -93,7 +99,7 @@ Reply "yes" to log it, or tell me what to change.
 ```
 
 **7. Never publish.** This skill produces a script. The user shoots it and
-posts it. On "yes", append to `~/.claude/instagram/log.md` with the date, the
+posts it. On "yes", append to `.claude/instagram/log.md` with the date, the
 hook formula used and the first line, so `/ig-audit` has a history later.
 
 ## On-screen text is a separate script
@@ -114,7 +120,7 @@ Write it separately, every time. It is read before it is heard.
 ## Rules that make the difference
 
 - **One idea per Reel.** If the script has two, you have two Reels. Say so.
-- **Numbers over adjectives.** "$4,200" beats "a lot". If the user has not
+- **Numbers over adjectives.** "S/ 4,200" beats "a lot". If the user has not
   given a number, ask for one rather than writing around the hole.
 - **Cut the intro.** No greeting, no "in this video", no name, no logo sting.
   The video starts at the sentence you would normally reach at second six.

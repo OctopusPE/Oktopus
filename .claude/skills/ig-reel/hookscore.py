@@ -35,15 +35,22 @@ import json
 import re
 import statistics
 import sys
+import unicodedata
 
-WORD_RE = re.compile(r"[A-Za-z0-9$%'’-]+")
+# Spanish (Peru) is scored alongside English. Every word list below is matched
+# after fold(): lowercase, accents stripped, so "días", "Dias" and "dias" are
+# the same token and the Spanish entries can be written without accents.
+WORD_RE = re.compile(r"[\w$%'’-]+")
+MONEY_RE = re.compile(r"(?:US\$|\$|S/\.?)\s?\d", re.IGNORECASE)
 NUMBER_RE = re.compile(
-    r"\$\s?\d[\d,]*(?:\.\d+)?"                       # money, whole
+    r"(?:US\$|\$|S/\.?)\s?\d[\d,]*(?:\.\d+)?"        # money: $, US$, S/
     r"|\b\d[\d,]*(?:\.\d+)?\s?"                      # a figure, with or
     r"(?:%|k\b|x\b|hrs?\b|hours?\b|mins?\b|minutes?\b"  # without a unit
-    r"|days?\b|weeks?\b|months?\b|years?\b)?",
+    r"|days?\b|weeks?\b|months?\b|years?\b"
+    r"|horas?\b|minutos?\b|d[ií]as?\b|semanas?\b|mes(?:es)?\b|a[ñn]os?\b"
+    r"|soles\b|lucas?\b|mil\b)?",
     re.IGNORECASE)
-PROPER_RE = re.compile(r"(?<!^)\b[A-Z][a-z]{2,}\b")
+PROPER_RE = re.compile(r"(?<!^)\b[A-ZÁÉÍÓÚÑ][a-záéíóúñü]{2,}\b")
 HASHTAG_RE = re.compile(r"(?:^|\s)#\w+")
 EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF☀-➿]")
 
@@ -56,10 +63,21 @@ SPOKEN_NUMBERS = {
     "ten", "eleven", "twelve", "fifteen", "twenty", "thirty", "forty", "fifty",
     "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
     "billion", "dozen", "half", "twice", "triple",
+    # es-PE. "uno", "una" and "primero" are left out for the same reason, and
+    # "once" (11) because it collides with the English word.
+    "cero", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
+    "diez", "doce", "quince", "veinte", "veinticinco", "treinta",
+    "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa",
+    "cien", "ciento", "cientos", "quinientos", "mil", "miles", "millon",
+    "millones", "docena", "mitad", "doble", "triple",
 }
 MONEY_WORDS = {
     "dollars", "dollar", "bucks", "grand", "percent", "cents",
     "millionaire", "billionaire", "revenue", "profit", "salary", "rent",
+    # es-PE. "lucas" is how Peru says soles out loud.
+    "soles", "lucas", "luca", "lukas", "dolares", "dolar", "plata", "centimos",
+    "millonario", "ingresos", "ganancia", "ganancias", "utilidad", "sueldo",
+    "alquiler", "facturacion", "facture", "porcentaje",
 }
 
 # Words that put something on the line. A hook with none of these is a
@@ -76,6 +94,21 @@ STAKES = {
     "before", "until", "instead", "but", "except", "unless", "problem",
     "risk", "danger", "warning", "regret", "wish", "should", "shouldn't",
     "still", "already", "only", "without", "versus", "vs", "actually",
+    # es-PE. "para" and "ya" are left out: as words they are mostly filler
+    # ("para" = "for", "ya pe"), even though "para" can mean "stop".
+    "deja", "dejen", "nunca", "jamas", "mal", "error", "errores", "equivocado",
+    "perdi", "perdimos", "perder", "pierdes", "pierden", "perdida", "costo",
+    "cuesta", "cuestan", "quebre", "quiebra", "roto", "falle", "fallo",
+    "fracaso", "fracase", "nadie", "nada", "ni", "renuncie", "renunciar",
+    "despedido", "despedi", "despidieron", "borre", "borra", "borren",
+    "reemplazo", "reemplaza", "reemplace", "corte", "gratis", "pague",
+    "pagamos", "cobre", "cobran", "cobras", "contrate", "ahorre", "ahorramos",
+    "primer", "primera", "prohibido", "ilegal", "peor", "odio", "odiaba",
+    "desperdicie", "bote", "estafa", "mentira", "mentiras", "mintieron",
+    "verdad", "secreto", "oculto", "robaron", "robo", "antes", "hasta",
+    "sino", "excepto", "salvo", "problema", "riesgo", "peligro", "cuidado",
+    "ojo", "arrepiento", "ojala", "deberias", "deberian", "todavia", "aun",
+    "solo", "sin", "realmente",
 }
 
 # Openers that spend the first second saying nothing.
@@ -86,6 +119,13 @@ WEAK_OPENERS = [
     "have you", "did you", "do you", "are you", "in this", "in today",
     "the thing", "a lot", "there is", "there are", "this is", "it is",
     "as a", "when it", "if you've", "you know",
+    # es-PE. "este" and "ya" as openers are the Peruvian "um".
+    "hola", "holi", "buenas", "oye", "chicos", "amigos", "gente", "bueno",
+    "entonces", "este", "eh", "ya", "hoy", "basicamente", "sinceramente",
+    "la verdad", "mira", "miren", "escucha", "solo queria", "quiero",
+    "queria", "te quiero", "les quiero", "vamos a", "uno de", "una de",
+    "sabias", "alguna vez", "tu sabes", "sabes", "en este",
+    "hay", "esto es", "es que", "lo que", "como sabes",
 ]
 
 # Imperatives that earn the front position.
@@ -93,6 +133,12 @@ IMPERATIVES = {
     "stop", "steal", "copy", "delete", "try", "watch", "read", "save",
     "use", "build", "make", "write", "send", "take", "start", "quit",
     "never", "always", "don't", "dont", "do", "put", "run", "check",
+    # es-PE, tú and usted forms. "mira" is a weak opener here, not an order.
+    "deja", "dejen", "roba", "roben", "copia", "copien", "borra", "borren",
+    "prueba", "lee", "guarda", "guarden", "usa", "usen", "arma", "haz",
+    "hagan", "escribe", "manda", "toma", "empieza", "nunca", "siempre", "no",
+    "pon", "revisa", "chequea", "olvidate", "aprende", "cobra", "sube",
+    "cambia", "evita", "deje", "use", "haga", "evite", "guarde", "pruebe",
 }
 
 DEALBREAKERS = [
@@ -102,6 +148,14 @@ DEALBREAKERS = [
      "Video preamble. Delete it and open on the payoff."),
     (re.compile(r"(?i)^\s*(?:hey |hi |what'?s up |welcome )"),
      "Greeting. Nobody came to the feed to be greeted."),
+    # es-PE. These run on fold(text), so they are written without accents.
+    (re.compile(r"(?i)^[\s¡]*(?:deja de scrollear|no scrollees|para de scrollear|no deslices|no pases)"),
+     "Abre con \"deja de scrollear\". Pedir atención prueba que no te la ganaste."),
+    (re.compile(r"(?i)\b(?:en (?:este|el) (?:video|reel)(?: de hoy)?|hoy (?:te|les) voy a"
+                r"|(?:te|les) voy a (?:ensenar|mostrar|contar|explicar))\b"),
+     "Preámbulo de video. Bórralo y abre con lo que prometes."),
+    (re.compile(r"(?i)^[\s¡]*(?:hola|holi|buenas|que tal|bienvenid)"),
+     "Saludo. Nadie entró al feed para que lo saluden."),
     (HASHTAG_RE,
      "Hashtag in the hook. Hashtags belong at the bottom of the caption, if anywhere."),
     (EMOJI_RE,
@@ -111,6 +165,16 @@ DEALBREAKERS = [
 
 def clamp(n):
     return max(0.0, min(100.0, n))
+
+
+def fold(text):
+    """Lowercase, accents off, ñ kept as n. "Días" and "dias" match."""
+    return "".join(c for c in unicodedata.normalize("NFD", text.lower())
+                   if unicodedata.category(c) != "Mn")
+
+
+def norm(token):
+    return fold(token.strip("'’"))
 
 
 def words(text):
@@ -138,8 +202,9 @@ def check_length(text):
 def check_specificity(text):
     """One concrete thing beats three abstract ones."""
     nums = [n.strip() for n in NUMBER_RE.findall(text) if n.strip()]
-    propers = set(PROPER_RE.findall(text))
-    low = [w.lower().strip("'’") for w in words(text)]
+    # "¿Sabías..." starts the sentence even though "S" is not at index 0.
+    propers = set(PROPER_RE.findall(text.lstrip("¿¡\"'“ ")))
+    low = [norm(w) for w in words(text)]
     spoken = [w for w in low if w in SPOKEN_NUMBERS or w in MONEY_WORDS]
     hits = len(nums) + len(propers) + len(spoken)
     score = 15.0 if hits == 0 else clamp(45 + hits * 30)
@@ -150,10 +215,10 @@ def check_specificity(text):
 
 def check_stakes(text):
     """Tension, cost, negation. Something the viewer might lose."""
-    w = [x.lower().strip("'’") for x in words(text)]
+    w = [norm(x) for x in words(text)]
     hits = [x for x in w if x in STAKES]
     markers = sorted(set(hits))
-    if re.search(r"\$\s?\d", text):
+    if MONEY_RE.search(text):
         markers.append("a price")
     n = len(markers)
     score = {0: 20.0, 1: 70.0}.get(n, 100.0)
@@ -167,12 +232,13 @@ def check_frontload(text):
     w = words(text)
     if not w:
         return 0.0, "empty"
-    low = [x.lower().strip("'’") for x in w]
+    low = [norm(x) for x in w]
     opener = " ".join(low[:2])
     penalty = 0
     hit_opener = None
     for weak in WEAK_OPENERS:
-        if opener.startswith(weak) or low[0] == weak:
+        # Whole words only: "so" must not catch "sold", nor "ya" catch "yape".
+        if (opener + " ").startswith(weak + " "):
             penalty, hit_opener = 30, weak
             break
     payload = None
@@ -197,15 +263,29 @@ def check_frontload(text):
     return clamp(base - penalty), detail
 
 
+# Spanish drops the pronoun: "Perdí S/ 18,000" is first person with no "yo".
+# Preterite yo-forms end in a stressed é/í, nosotros-forms in -amos/-emos/-imos.
+NOT_VERBS = {"aqui", "alli", "ahi", "asi", "tambien", "jamas", "porque"}
+
+
+def first_person_verb(token):
+    raw = token.lower()
+    if norm(raw) in NOT_VERBS:
+        return False
+    return bool(re.fullmatch(r"\w{2,}[éí]", raw) or re.fullmatch(r"\w{3,}(?:amos|emos|imos)", raw))
+
+
 def check_address(text):
     """Aimed at one viewer, or floating in the air."""
-    low = text.lower()
-    w = [x.lower().strip("'’") for x in words(text)]
-    if re.search(r"\b(you|your|you're|youre|yourself)\b", low):
+    low = fold(text)
+    w = [norm(x) for x in words(text)]
+    if re.search(r"\b(you|your|you're|youre|yourself"
+                 r"|tu|tus|te|ti|contigo|usted|ustedes|les)\b", low):
         return 100.0, "speaks to the viewer"
     if w and w[0] in IMPERATIVES:
         return 90.0, f"imperative opener (\"{w[0]}\")"
-    if re.search(r"\b(i|my|me|we|our)\b", low):
+    if (re.search(r"\b(i|my|me|we|our|yo|mi|mis|nos|nosotros|nuestro|nuestra|conmigo)\b", low)
+            or any(first_person_verb(x) for x in words(text))):
         return 70.0, "first person, no viewer named"
     return 35.0, "third person, nobody in the room"
 
@@ -221,7 +301,8 @@ def run(text):
         "FRONTLOAD": check_frontload(text),
         "ADDRESS": check_address(text),
     }
-    flags = [msg for pattern, msg in DEALBREAKERS if pattern.search(text)]
+    flags = [msg for pattern, msg in DEALBREAKERS
+             if pattern.search(text) or pattern.search(fold(text))]
     scores = [results[c][0] for c in CHECKS]
     # The weakest property caps the hook, same logic as detect.py: one bad
     # property is enough for the thumb to keep moving.
